@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CompostMath - honest compost math</title>
+<style>
+  :root { --bg:#15130e; --card:#201c12; --ink:#f4f0e2; --dim:#b3a98d; --acc:#a8bf5a; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { padding:28px 24px 8px; max-width:980px; margin:0 auto; display:flex; justify-content:space-between; align-items:baseline; }
+  h1 { margin:0; font-size:28px; }
+  h1 span { color:var(--acc); }
+  nav a { color:var(--dim); text-decoration:none; font-size:14px; }
+  main { max-width:980px; margin:0 auto; padding:16px 24px 60px; display:grid; gap:18px; }
+  .card { background:var(--card); border-radius:14px; padding:20px; }
+  .card h2 { margin:0 0 12px; font-size:13px; letter-spacing:1.5px; color:var(--dim); text-transform:uppercase; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:14px; }
+  label { display:block; font-size:13px; color:var(--dim); margin-bottom:4px; }
+  input, select { width:100%; background:#191510; border:1px solid #4d452c; color:var(--ink); border-radius:8px; padding:9px 10px; font-size:15px; }
+  .hint { font-size:12.5px; color:var(--dim); margin-top:10px; }
+  button { cursor:pointer; border:0; border-radius:9px; padding:11px 16px; font-size:15px; background:var(--acc); color:#27290f; font-weight:600; }
+  button.ghost { background:#3d3722; color:var(--ink); font-weight:500; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; }
+  .verdict { font-size:17px; line-height:1.65; }
+  .verdict b { color:var(--acc); }
+  .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; margin-top:16px; }
+  .stat { background:#191510; border-radius:10px; padding:12px; }
+  .stat .v { font-size:19px; font-weight:700; color:var(--acc); }
+  .stat .k { font-size:12px; color:var(--dim); margin-top:2px; }
+  .warn { background:#33261a; border:1px solid #6e5535; border-radius:10px; padding:12px 14px; margin-top:14px; font-size:14px; color:#f0ddc8; }
+  .ok { background:#26301a; border:1px solid #546e35; border-radius:10px; padding:12px 14px; margin-top:14px; font-size:14px; color:#e2f0c8; }
+  table.mix { width:100%; border-collapse:collapse; }
+  table.mix td { padding:5px 4px; }
+  .fine { font-size:12.5px; color:var(--dim); margin-top:8px; }
+  a { color:var(--acc); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Compost<span>Math</span></h1>
+  <nav><a href="index.html">about</a></nav>
+</header>
+<main>
+  <section class="card">
+    <h2>What is going in</h2>
+    <table class="mix" id="matRows"></table>
+    <div class="row">
+      <button class="ghost" id="addRow">+ add material</button>
+    </div>
+    <div class="row" id="presets"></div>
+    <div class="hint">Buckets, not pounds - nobody weighs compost. The C:N values are honest averages; your leaves and my leaves differ, and the pile forgives approximation as long as you are on the right side of 30:1.</div>
+  </section>
+
+  <section class="card">
+    <h2>The balance</h2>
+    <div class="verdict" id="verdict"></div>
+    <div class="stats" id="stats"></div>
+    <div id="fixBox"></div>
+  </section>
+
+  <section class="card">
+    <h2>The pile</h2>
+    <div class="grid">
+      <div>
+        <label for="pl">Length (ft)</label>
+        <input id="pl" type="number" min="1" max="12" step="0.5" value="3">
+      </div>
+      <div>
+        <label for="pw">Width (ft)</label>
+        <input id="pw" type="number" min="1" max="12" step="0.5" value="3">
+      </div>
+      <div>
+        <label for="ph">Height (ft)</label>
+        <input id="ph" type="number" min="1" max="6" step="0.5" value="3">
+      </div>
+    </div>
+    <div class="row">
+      <button class="ghost on" id="turnYes">Turning weekly</button>
+      <button class="ghost" id="turnNo">Leaving it alone</button>
+    </div>
+    <div class="stats" id="pileStats"></div>
+    <div id="pileBox"></div>
+  </section>
+
+  <section class="card">
+    <h2>The honest part</h2>
+    <div class="verdict" style="font-size:15px">
+      A pile that smells like ammonia has too much nitrogen - bury it in browns. A pile that sits cold for six months has too much carbon - feed it greens and water. Under 27 cubic feet a pile cannot hold its own heat, so "my compost never heats up" is usually geometry, not chemistry.
+    </div>
+  </section>
+</main>
+<script src="engine.js"></script>
+<script>
+(function () {
+  var turned = true;
+  var rows = [];
+  var matRows = document.getElementById('matRows');
+  function matOptions(sel) {
+    Object.keys(CompostEngine.MATERIALS).forEach(function (k) {
+      var m = CompostEngine.MATERIALS[k];
+      var o = document.createElement('option');
+      o.value = k; o.textContent = m.name + ' (' + m.kind + ', ' + m.cn + ':1)';
+      sel.appendChild(o);
+    });
+  }
+  function addRow(mat, buckets) {
+    var tr = document.createElement('tr');
+    var sel = document.createElement('select');
+    matOptions(sel); sel.value = mat;
+    var inp = document.createElement('input');
+    inp.type = 'number'; inp.min = 0; inp.max = 100; inp.step = 1; inp.value = buckets;
+    var rm = document.createElement('button');
+    rm.className = 'ghost'; rm.textContent = 'x';
+    var row = { sel: sel, inp: inp, tr: tr };
+    rm.addEventListener('click', function () {
+      rows = rows.filter(function (r) { return r !== row; });
+      matRows.removeChild(tr); render();
+    });
+    sel.addEventListener('change', render);
+    inp.addEventListener('input', render);
+    var t1 = document.createElement('td'); t1.style.width = '58%'; t1.appendChild(sel);
+    var t2 = document.createElement('td'); t2.appendChild(inp);
+    var t3 = document.createElement('td'); t3.appendChild(rm);
+    tr.appendChild(t1); tr.appendChild(t2); tr.appendChild(t3);
+    matRows.appendChild(tr);
+    rows.push(row);
+  }
+  document.getElementById('addRow').addEventListener('click', function () { addRow('leaves', 2); render(); });
+  var PRESETS = [
+    ['Typical weekend', [['scraps', 2], ['leaves', 3]]],
+    ['All kitchen, no browns', [['scraps', 4], ['coffee', 1]]],
+    ['Leaf mountain', [['leaves', 8]]],
+    ['Mowed yesterday', [['grass', 3], ['leaves', 2], ['cardboard', 1]]]
+  ];
+  var pw = document.getElementById('presets');
+  PRESETS.forEach(function (p) {
+    var b = document.createElement('button');
+    b.className = 'ghost'; b.textContent = p[0];
+    b.addEventListener('click', function () {
+      rows = []; matRows.innerHTML = '';
+      p[1].forEach(function (pair) { addRow(pair[0], pair[1]); });
+      render();
+    });
+    pw.appendChild(b);
+  });
+  function setTurned(t) {
+    turned = t;
+    document.getElementById('turnYes').className = 'ghost' + (t ? ' on' : '');
+    document.getElementById('turnNo').className = 'ghost' + (t ? '' : ' on');
+    render();
+  }
+  document.getElementById('turnYes').addEventListener('click', function () { setTurned(true); });
+  document.getElementById('turnNo').addEventListener('click', function () { setTurned(false); });
+  function stat(v, k) { return '<div class="stat"><div class="v">' + v + '</div><div class="k">' + k + '</div></div>'; }
+  function render() {
+    var parts = rows.map(function (r) { return { mat: r.sel.value, buckets: Number(r.inp.value) || 0 }; })
+                    .filter(function (p) { return p.buckets > 0; });
+    var vEl = document.getElementById('verdict');
+    var fixBox = document.getElementById('fixBox');
+    if (!parts.length) {
+      vEl.textContent = 'Add materials to see the balance.';
+      document.getElementById('stats').innerHTML = '';
+      fixBox.innerHTML = '';
+    } else {
+      var cn = CompostEngine.mixCN(parts);
+      var verd = CompostEngine.verdict(cn);
+      vEl.innerHTML = 'This mix runs about <b>' + cn + ':1</b> carbon to nitrogen - <b>' + verd + '</b>.';
+      document.getElementById('stats').innerHTML =
+        stat(cn + ':1', 'C:N (target ~28:1)') +
+        stat(CompostEngine.totalBuckets(parts), 'buckets in the mix');
+      var fixHtml = '';
+      if (cn > 32 || (cn < 20 && cn > 0)) {
+        var fixer = cn > 32 ? 'scraps' : 'leaves';
+        var n = CompostEngine.bucketsToFix(parts, fixer);
+        if (n > 0) {
+          fixHtml = '<div class="warn">Fix: add about <b>' + n + ' bucket' + (n === 1 ? '' : 's') + ' of ' + CompostEngine.MATERIALS[fixer].name.toLowerCase() + '</b> to land near 28:1. Any ' + (cn > 32 ? 'green' : 'brown') + ' works - this is just the closest lever.</div>';
+        }
+      } else if (cn >= 20 && cn <= 32) {
+        fixHtml = '<div class="ok">Inside the 20-32 window. Wet it like a wrung-out sponge, turn it, and let the microbes work.</div>';
+      }
+      fixBox.innerHTML = fixHtml;
+    }
+    var L = Number(document.getElementById('pl').value) || 0;
+    var W = Number(document.getElementById('pw').value) || 0;
+    var H = Number(document.getElementById('ph').value) || 0;
+    var cu = CompostEngine.pileCuFt(L, W, H);
+    var hot = CompostEngine.heatsUp(cu);
+    var t = CompostEngine.weeksToDone(hot, turned);
+    document.getElementById('pileStats').innerHTML =
+      stat(cu + ' cu ft', 'pile volume') +
+      stat(hot ? 'yes' : 'no', 'holds heat (needs 27+)') +
+      stat(CompostEngine.finishedCuFt(cu) + ' cu ft', 'finished compost') +
+      stat(t.min + '-' + t.max + ' wks', t.note.split(' - ')[0]);
+    document.getElementById('pileBox').innerHTML = hot
+      ? '<div class="ok">' + t.note.charAt(0).toUpperCase() + t.note.slice(1) + '. Expect roughly ' + CompostEngine.finishedCuFt(cu) + ' cu ft of finished compost - about a third of what you piled.</div>'
+      : '<div class="warn">Under 27 cu ft the pile loses heat as fast as it makes it. Combine with the neighbor\'s leaves, or accept the cold-pile timeline: ' + t.min + '-' + t.max + ' weeks.</div>';
+  }
+  ['pl', 'pw', 'ph'].forEach(function (id) {
+    document.getElementById(id).addEventListener('input', render);
+  });
+  addRow('scraps', 2); addRow('leaves', 3);
+  render();
+})();
+</script>
+</body>
+</html>
